@@ -1,42 +1,32 @@
 import streamlit as st
-import subprocess
-import os
 import pandas as pd
+import gzip
 
 st.title("FASTQ Read Counter")
-st.markdown("This app counts reads in compressed FASTQ files from a selected directory.")
 
-# File input
-fastq_dir = st.text_input("Enter the path to your FASTQ directory:", "/home/betre/illumina_paired/data/trimmed")
+st.markdown("""
+Upload one or more compressed FASTQ files (`.fastq.gz`).  
+The app will count how many reads are in each file.
+""")
 
-if st.button("Count Reads"):
-    if not os.path.isdir(fastq_dir):
-        st.error("Directory does not exist.")
-    else:
-        output_file = "read_counts.csv"
-        with open(output_file, "w") as f:
-            f.write("sample,read_count\n")
+uploaded_files = st.file_uploader("Upload .fastq.gz files", type="gz", accept_multiple_files=True)
 
-        # List fastq.gz files
-        fastq_files = [f for f in os.listdir(fastq_dir) if f.endswith(".fastq.gz")]
-        results = []
+if uploaded_files:
+    results = []
 
-        progress = st.progress(0)
-        for i, fastq_file in enumerate(fastq_files):
-            full_path = os.path.join(fastq_dir, fastq_file)
-            cmd = f"zcat '{full_path}' | wc -l"
-            try:
-                wc_output = subprocess.check_output(cmd, shell=True, text=True)
-                read_count = int(int(wc_output.strip()) / 4)
-                results.append((fastq_file, read_count))
-            except Exception as e:
-                st.warning(f"Error processing {fastq_file}: {e}")
-            progress.progress((i + 1) / len(fastq_files))
+    for uploaded_file in uploaded_files:
+        with gzip.open(uploaded_file, "rt") as f:
+            num_lines = sum(1 for _ in f)
+        read_count = num_lines // 4  # Each read has 4 lines
+        results.append((uploaded_file.name, read_count))
 
-        # Save to CSV
-        df = pd.DataFrame(results, columns=["sample", "read_count"])
-        df.to_csv(output_file, index=False)
-        st.success(f"Read counts saved to `{output_file}`")
-        st.dataframe(df)
-        st.download_button("Download CSV", df.to_csv(index=False), file_name="read_counts.csv", mime="text/csv")
+    df = pd.DataFrame(results, columns=["sample", "read_count"])
+    st.dataframe(df)
+
+    st.download_button(
+        label="Download Results as CSV",
+        data=df.to_csv(index=False),
+        file_name="read_counts.csv",
+        mime="text/csv"
+    )
 
